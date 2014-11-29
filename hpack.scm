@@ -1,28 +1,31 @@
-;;;
-;;; hpack is an HTTP/2 header compression library for Chicken
-;;;
+;;
+;; hpack is a HTTP/2 header compression library for Chicken
 ;; Copyright (c) 2014, Omar Shorbaji
 ;; All rights reserved.
 ;;
-;; Permission is hereby granted, free of charge, to any person
-;; obtaining a copy of this software and associated documentation
-;; files (the "Software"), to deal in the Software without
-;; restriction, including without limitation the rights to use, copy,
-;; modify, merge, publish, distribute, sublicense, and/or sell copies
-;; of the Software, and to permit persons to whom the Software is
-;; furnished to do so, subject to the following conditions:
-;; 
-;; The above copyright notice and this permission notice shall be
-;; included in all copies or substantial portions of the Software.
-;; 
-;; THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-;; EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-;; MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
-;; NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
-;; BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
-;; ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
-;; CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-;; SOFTWARE.
+;; Redistribution and use in source and binary forms, with or without
+;; modification, are permitted provided that the following conditions are met:
+;;
+;; Redistributions of source code must retain the above copyright notice, this
+;; list of conditions and the following disclaimer. 
+;; Redistributions in binary form must reproduce the above copyright notice,
+;; this list of conditions and the following disclaimer in the documentation
+;; and/or other materials provided with the distribution. 
+;; Neither the name of the author nor the names of its contributors may be
+;; used to endorse or promote products derived from this software without
+;; specific prior written permission. 
+;;
+;; THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+;; AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+;; IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+;; ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDERS OR CONTRIBUTORS BE
+;; LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR 
+;; CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OFcl
+;; SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+;; INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+;; CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+;; ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+;; POSSIBILITY OF SUCH DAMAGE.
 
 ;; Implements draft 9 of HPACK - Header Compression for HTTP/2
 ;; draft-ietf-httpbis-header-compression-09
@@ -379,20 +382,67 @@
   ;; Section 3.3.1 Static Table (entries defined in Appendix B)
 
   (define static-table
-    '((:authority) (:method . "GET") (:method . "POST") (:path . "/")
-                   (:path . "/index.html") (:scheme . "http") (:scheme . "https") (:status . "200")
-                   (:status . "204") (:status . "206") (:status . "304") (:status . "400")
-                   (:status . "404") (:status . "500") (accept-charset . "")
-                   (accept-encoding . "gzip, deflate") (accept-language . "") (accept-ranges . "")
-                   (accept . "") (access-control-allow-origin . "") (age . "") (allow . "")
-                   (authorization . "") (cache-control . "") (content-disposition . "") (content-encoding . "") (content-language . "")
-                   (content-length . "") (content-location . "") (content-range . "") (content-type . "") (cookie . "")
-                   (date . "") (etag . "") (expect . "") (expires . "") (from . "") (host . "") (if-match . "")
-                   (if-modified-since . "") (if-none-match . "") (if-range . "") (if-unmodified-since . "")
-                   (last-modified . "") (link . "") (location . "") (max-forwards . "") (proxy-authenticate . "")
-                   (proxy-authorization . "") (range . "") (referer . "") (refresh . "") (retry-after . "") (server . "")
-                   (set-cookie . "") (strict-transport-security . "") (transfer-encoding . "") (user-agent . "")
-                   (vary . "") (via . "") (www-authenticate . "")))
+    '((:authority)
+      (:method . "GET")
+      (:method . "POST")
+      (:path . "/")
+      (:path . "/index.html")
+      (:scheme . "http")
+      (:scheme . "https")
+      (:status . "200")
+      (:status . "204")
+      (:status . "206")
+      (:status . "304")
+      (:status . "400")
+      (:status . "404")
+      (:status . "500")
+      (accept-charset . "")
+      (accept-encoding . "gzip, deflate")
+      (accept-language . "")
+      (accept-ranges . "")
+      (accept . "")
+      (access-control-allow-origin . "")
+      (age . "")
+      (allow . "")
+      (authorization . "")
+      (cache-control . "")
+      (content-disposition . "")
+      (content-encoding . "")
+      (content-language . "")
+      (content-length . "")
+      (content-location . "")
+      (content-range . "")
+      (content-type . "")
+      (cookie . "")
+      (date . "")
+      (etag . "")
+      (expect . "")
+      (expires . "")
+      (from . "")
+      (host . "")
+      (if-match . "")
+      (if-modified-since . "")
+      (if-none-match . "")
+      (if-range . "")
+      (if-unmodified-since . "")
+      (last-modified . "")
+      (link . "")
+      (location . "")
+      (max-forwards . "")
+      (proxy-authenticate . "")
+      (proxy-authorization . "")
+      (range . "")
+      (referer . "")
+      (refresh . "")
+      (retry-after . "")
+      (server . "")
+      (set-cookie . "")
+      (strict-transport-security . "")
+      (transfer-encoding . "")
+      (user-agent . "")
+      (vary . "")
+      (via . "")
+      (www-authenticate . "")))
 
   (define static-table-length 61)
 
@@ -596,7 +646,7 @@
           (set! header-table ht)
           (reverse headers)))))
 
-;; Encoder
+  ;; Encoder
 
   (define (rest-of-integer->code n)
     (if (< n 128)

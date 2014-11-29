@@ -35,7 +35,7 @@
   (for-each 
     (lambda (n)
       (display (conc "test " n ": "))
-      (let* ((file-name (conc "tests/hpack-test-case/nghttp2/story_"
+      (let* ((file-name (conc "./hpack-test-case/nghttp2/story_"
                               (string-pad (number->string n) 2 #\0)
                               ".json"))
              (struct (with-input-from-file file-name json-read))
