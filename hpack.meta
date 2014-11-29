@@ -1,0 +1,11 @@
+(
+(license "MIT")
+
+(category web)
+
+(needs defstruct)
+
+(test-depends test json)
+
+(author "Omar Shorbaji")
+(synopsis "An HTTP/2 header compression library for Chicken"))

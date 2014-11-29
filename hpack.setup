@@ -1,0 +1,8 @@
+(compile -s -O3 -d1 hpack.scm -j hpack)
+(compile -s hpack.import.scm -O3 -d0)
+
+(install-extension
+  'hpack
+  '("hpack.so" "hpack.import.so")
+  '((version "0.1")))
+
