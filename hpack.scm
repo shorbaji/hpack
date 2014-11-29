@@ -1,3 +1,37 @@
+;;;
+;;; hpack is an HTTP/2 header compression library for Chicken
+;;;
+;; Copyright (c) 2014, Omar Shorbaji
+;; All rights reserved.
+;;
+;; Permission is hereby granted, free of charge, to any person
+;; obtaining a copy of this software and associated documentation
+;; files (the "Software"), to deal in the Software without
+;; restriction, including without limitation the rights to use, copy,
+;; modify, merge, publish, distribute, sublicense, and/or sell copies
+;; of the Software, and to permit persons to whom the Software is
+;; furnished to do so, subject to the following conditions:
+;; 
+;; The above copyright notice and this permission notice shall be
+;; included in all copies or substantial portions of the Software.
+;; 
+;; THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+;; EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+;; MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+;; NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
+;; BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+;; ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
+;; CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+;; SOFTWARE.
+
+;; Implements draft 9 of HPACK - Header Compression for HTTP/2
+;; draft-ietf-httpbis-header-compression-09
+;; reference: http://tools.ietf.org/html/draft-ietf-httpbis-header-compression-09 
+
+;; TODOs: 
+;; 1. optimize for performance - particularly looking at huffman encoding/decoding
+;; 2. error & exception handling
+
 (module hpack
   (make-hpack-encoder make-hpack-decoder)
 
@@ -5,111 +39,274 @@
   (use srfi-1 defstruct)
 
   (define make-error '())
-  (define SETTINGS-HEADER-TABLE-SIZE (* 256 256 256))
 
-  ; Huffman Code
-  ;; Appendix C
+  (define SETTINGS-HEADER-TABLE-SIZE (* 256 256 256)) ; arbitrary - should make a parameter
+
+  ;; The Huffman code - copied directly from Appendix C and used to encode 
 
   (define huffman-code
     '(
-      (1 1 1 1 1 1 1 1 1 1 0 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1)
-      (0 1 0 1 0 0) (1 1 1 1 1 1 1 0 0 0) (1 1 1 1 1 1 1 0 0 1) (1 1 1 1 1 1 1 1 1 0 1 0) (1 1 1 1 1 1 1 1 1 1 0 0 1)
-      (0 1 0 1 0 1) (1 1 1 1 1 0 0 0) (1 1 1 1 1 1 1 1 0 1 0) (1 1 1 1 1 1 1 0 1 0) (1 1 1 1 1 1 1 0 1 1)
-      (1 1 1 1 1 0 0 1) (1 1 1 1 1 1 1 1 0 1 1) (1 1 1 1 1 0 1 0) (0 1 0 1 1 0) (0 1 0 1 1 1) (0 1 1 0 0 0)
-      (0 0 0 0 0) (0 0 0 0 1) (0 0 0 1 0) (0 1 1 0 0 1) (0 1 1 0 1 0) (0 1 1 0 1 1) (0 1 1 1 0 0) (0 1 1 1 0 1)
-      (0 1 1 1 1 0) (0 1 1 1 1 1) (1 0 1 1 1 0 0) (1 1 1 1 1 0 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 0 0) (1 0 0 0 0 0)
-      (1 1 1 1 1 1 1 1 1 0 1 1) (1 1 1 1 1 1 1 1 0 0) (1 1 1 1 1 1 1 1 1 1 0 1 0) (1 0 0 0 0 1)
-      (1 0 1 1 1 0 1) (1 0 1 1 1 1 0) (1 0 1 1 1 1 1) (1 1 0 0 0 0 0) (1 1 0 0 0 0 1) (1 1 0 0 0 1 0)
-      (1 1 0 0 0 1 1) (1 1 0 0 1 0 0) (1 1 0 0 1 0 1) (1 1 0 0 1 1 0) (1 1 0 0 1 1 1) (1 1 0 1 0 0 0)
-      (1 1 0 1 0 0 1) (1 1 0 1 0 1 0) (1 1 0 1 0 1 1) (1 1 0 1 1 0 0) (1 1 0 1 1 0 1) (1 1 0 1 1 1 0)
-      (1 1 0 1 1 1 1) (1 1 1 0 0 0 0) (1 1 1 0 0 0 1) (1 1 1 0 0 1 0) (1 1 1 1 1 1 0 0) (1 1 1 0 0 1 1)
-      (1 1 1 1 1 1 0 1) (1 1 1 1 1 1 1 1 1 1 0 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0) (1 1 1 1 1 1 1 1 1 1 1 0 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 0 0) (1 0 0 0 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 0 1) (0 0 0 1 1)
-      (1 0 0 0 1 1) (0 0 1 0 0) (1 0 0 1 0 0) (0 0 1 0 1) (1 0 0 1 0 1) (1 0 0 1 1 0) (1 0 0 1 1 1) (0 0 1 1 0)
-      (1 1 1 0 1 0 0) (1 1 1 0 1 0 1) (1 0 1 0 0 0) (1 0 1 0 0 1) (1 0 1 0 1 0) (0 0 1 1 1) (1 0 1 0 1 1) (1 1 1 0 1 1 0)
-      (1 0 1 1 0 0) (0 1 0 0 0) (0 1 0 0 1) (1 0 1 1 0 1) (1 1 1 0 1 1 1) (1 1 1 1 0 0 0) (1 1 1 1 0 0 1) (1 1 1 1 0 1 0)
-      (1 1 1 1 0 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 0) (1 1 1 1 1 1 1 1 1 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 0 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 1 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 0 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 0 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 1) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1)
-      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0) (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1)
+      (0 1 0 1 0 0)
+      (1 1 1 1 1 1 1 0 0 0)
+      (1 1 1 1 1 1 1 0 0 1)
+      (1 1 1 1 1 1 1 1 1 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 0 0 1)
+      (0 1 0 1 0 1)
+      (1 1 1 1 1 0 0 0)
+      (1 1 1 1 1 1 1 1 0 1 0)
+      (1 1 1 1 1 1 1 0 1 0)
+      (1 1 1 1 1 1 1 0 1 1)
+      (1 1 1 1 1 0 0 1)
+      (1 1 1 1 1 1 1 1 0 1 1)
+      (1 1 1 1 1 0 1 0)
+      (0 1 0 1 1 0)
+      (0 1 0 1 1 1)
+      (0 1 1 0 0 0)
+      (0 0 0 0 0)
+      (0 0 0 0 1)
+      (0 0 0 1 0)
+      (0 1 1 0 0 1)
+      (0 1 1 0 1 0)
+      (0 1 1 0 1 1)
+      (0 1 1 1 0 0)
+      (0 1 1 1 0 1)
+      (0 1 1 1 1 0)
+      (0 1 1 1 1 1)
+      (1 0 1 1 1 0 0)
+      (1 1 1 1 1 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 0 0)
+      (1 0 0 0 0 0)
+      (1 1 1 1 1 1 1 1 1 0 1 1)
+      (1 1 1 1 1 1 1 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 0 1 0)
+      (1 0 0 0 0 1)
+      (1 0 1 1 1 0 1)
+      (1 0 1 1 1 1 0)
+      (1 0 1 1 1 1 1)
+      (1 1 0 0 0 0 0)
+      (1 1 0 0 0 0 1)
+      (1 1 0 0 0 1 0)
+      (1 1 0 0 0 1 1)
+      (1 1 0 0 1 0 0)
+      (1 1 0 0 1 0 1)
+      (1 1 0 0 1 1 0)
+      (1 1 0 0 1 1 1)
+      (1 1 0 1 0 0 0)
+      (1 1 0 1 0 0 1)
+      (1 1 0 1 0 1 0)
+      (1 1 0 1 0 1 1)
+      (1 1 0 1 1 0 0)
+      (1 1 0 1 1 0 1)
+      (1 1 0 1 1 1 0)
+      (1 1 0 1 1 1 1)
+      (1 1 1 0 0 0 0)
+      (1 1 1 0 0 0 1)
+      (1 1 1 0 0 1 0)
+      (1 1 1 1 1 1 0 0)
+      (1 1 1 0 0 1 1)
+      (1 1 1 1 1 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 0 0)
+      (1 0 0 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 0 1)
+      (0 0 0 1 1)
+      (1 0 0 0 1 1)
+      (0 0 1 0 0)
+      (1 0 0 1 0 0)
+      (0 0 1 0 1)
+      (1 0 0 1 0 1)
+      (1 0 0 1 1 0)
+      (1 0 0 1 1 1)
+      (0 0 1 1 0)
+      (1 1 1 0 1 0 0)
+      (1 1 1 0 1 0 1)
+      (1 0 1 0 0 0)
+      (1 0 1 0 0 1)
+      (1 0 1 0 1 0)
+      (0 0 1 1 1)
+      (1 0 1 0 1 1)
+      (1 1 1 0 1 1 0)
+      (1 0 1 1 0 0)
+      (0 1 0 0 0)
+      (0 1 0 0 1)
+      (1 0 1 1 0 1)
+      (1 1 1 0 1 1 1)
+      (1 1 1 1 0 0 0)
+      (1 1 1 1 0 0 1)
+      (1 1 1 1 0 1 0)
+      (1 1 1 1 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 0)
+      (1 1 1 1 1 1 1 1 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 1 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 0 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 0 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 1)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 0 0 0)
+      (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 0 1 1 1 0)
       (1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1)))
+
+  ; Naive implementation of Huffman decoding 
+  ; We convert the input to a bit stream
+  ; We traverse a tree going left if 0, right is 1 and return the leaf
 
   (define huffman-tree
     '(((((48 . 49) 50 . 97) (99 . 101) 105 . 111)
@@ -137,12 +334,13 @@
       (((19 . 20) 21 . 23) (24 . 25) 26 . 27) ((28 . 29) 30 . 31)
       (127 . 220) 249 (10 . 13) 22 . 256))
 
-  (define (atom? x)
+
+  (define (an-atom? x)
     (and (not (pair? x))
          (not (null? x))))
 
   (define (huffman-find t s p)
-    (if (atom? s)
+    (if (an-atom? s)
       (cons s (huffman-find t t p))
       (if (null? p)
         '()
@@ -161,6 +359,8 @@
     (huffman-find huffman-tree
                   huffman-tree
                   (bytes->bits bytes)))
+
+  ; Naive implementation of Huffman encoding
 
   (define (bits->bytes bits)
     (if (null? bits)
@@ -182,17 +382,17 @@
     '((:authority) (:method . "GET") (:method . "POST") (:path . "/")
                    (:path . "/index.html") (:scheme . "http") (:scheme . "https") (:status . "200")
                    (:status . "204") (:status . "206") (:status . "304") (:status . "400")
-                   (:status . "404") (:status . "500") (accept-charset)
-                   (accept-encoding . "gzip, deflate") (accept-language) (accept-ranges)
-                   (accept) (access-control-allow-origin) (age) (allow) (authorization)
-                   (cache-control) (content-disposition) (content-encoding) (content-language)
-                   (content-length) (content-location) (content-range) (content-type) (cookie)
-                   (date) (etag) (expect) (expires) (from) (host) (if-match)
-                   (if-modified-since) (if-none-match) (if-range) (if-unmodified-since)
-                   (last-modified) (link) (location) (max-forwards) (proxy-authenticate)
-                   (proxy-authorization) (range) (referer) (refresh) (retry-after) (server)
-                   (set-cookie) (strict-transport-security) (transfer-encoding) (user-agent)
-                   (vary) (via) (www-authenticate)))
+                   (:status . "404") (:status . "500") (accept-charset . "")
+                   (accept-encoding . "gzip, deflate") (accept-language . "") (accept-ranges . "")
+                   (accept . "") (access-control-allow-origin . "") (age . "") (allow . "")
+                   (authorization . "") (cache-control . "") (content-disposition . "") (content-encoding . "") (content-language . "")
+                   (content-length . "") (content-location . "") (content-range . "") (content-type . "") (cookie . "")
+                   (date . "") (etag . "") (expect . "") (expires . "") (from . "") (host . "") (if-match . "")
+                   (if-modified-since . "") (if-none-match . "") (if-range . "") (if-unmodified-since . "")
+                   (last-modified . "") (link . "") (location . "") (max-forwards . "") (proxy-authenticate . "")
+                   (proxy-authorization . "") (range . "") (referer . "") (refresh . "") (retry-after . "") (server . "")
+                   (set-cookie . "") (strict-transport-security . "") (transfer-encoding . "") (user-agent . "")
+                   (vary . "") (via . "") (www-authenticate . "")))
 
   (define static-table-length 61)
 
@@ -204,6 +404,7 @@
     (size SETTINGS-HEADER-TABLE-SIZE))
 
   ;; Section 3.3.3 Index Address Space
+  ;; Note: static-table and header-table indexes start at 1
 
   (define (index-table-lookup index ht)
     (let ((headers (header-table-headers ht)))
@@ -270,7 +471,15 @@
   (define header-table-find (header-table-finder header-eq?))
   (define header-table-find-name (header-table-finder name-eq?))
 
-  ; Decoder - currently imnplemented as a recursive decent parser
+  ; HPACK decoder and encoder.
+  ; Usage note: An encoder and decoder each maintain a seperate header table as context.
+  ; Each HTTP/2 connection should have exactly one encoder and one decoder associated with it.
+
+  ; The decoder is implemented as a simple recursive decent parser
+
+  ; Section 6.1 Integer Representation
+  ; instead of prefix we use 2^prefix as argument mask
+  ; so prefix 7 is "mask 128"
 
   (define (rest-of-integer r m ls)
     (or (and (null? ls)
@@ -290,6 +499,8 @@
             (rest-of-integer n 1 (cdr ls))
             (values n (cdr ls))))))
 
+  ; Section 6.2 String Representation
+
   (define (string-value n ls)
     (or (and (< (length ls) n)
              make-error)
@@ -307,29 +518,58 @@
                              (if huff (huffman-decode s) s)))
                       ls))))))
 
-  (define (index-header ht ls)
-    (receive
-      (n ls)
-      (integer 128 ls)
-      (values (index-table-lookup n ht) ht ls)))
+  ; Section 7.1 Index Header Field Representation
+  ; Simply get an integer with 7-prefix and lookup in index table
 
-  (define (literal-header ht ls)
+  (define (index-header ht ls)
+    (receive (n ls)
+      (integer 128 ls)
+      (values (index-table-lookup n ht)
+              ht
+              ls)))
+
+  ; Section 7.2 Literal Header Field Representation
+
+  (define (indexed-name ht ls)
     (let* ((o (car ls))
-           (m (cond ((eq? o 64) 64)
+           (m (cond ((> o 64) 64)
                     (else 16))))
       (receive (n ls)
         (integer m ls)
         (let ((name (car (index-table-lookup n ht))))
-          (receive (value ls)
-            (string-literal ls)
-            (let* ((h (cons name value))
-                   (ht (if (eq? m 64) (header-table-insert ht h) ht)))
-              (values h ht ls)))))))
+          (values name ls)))))
+
+  (define (new-name ht ls)
+    (receive (s ls)
+      (string-literal ls)
+      (values (string->symbol s) ls)))
+
+  (define (literal-header-name ht ls)
+    (let ((new-name? (member (car ls) '(64 16 0))))
+      (if new-name?
+        (new-name ht (cdr ls))
+        (indexed-name ht ls))))
+
+  (define literal-header-value
+    string-literal)
+
+  (define (literal-header ht ls)
+    (let ((index? (>= (car ls) 64)))
+      (receive (name ls)
+        (literal-header-name ht ls)
+        (receive (value ls)
+          (literal-header-value ls)
+          (let* ((h (cons name value))
+                 (ht (if index?
+                       (header-table-insert ht h)
+                       ht)))
+            (values h ht ls))))))
 
   (define (header ht ls)
-    (if (> (car ls) 128)
-      (index-header ht ls)
-      (literal-header ht ls)))
+    (let ((indexed? (> (car ls) 128)))
+      (if indexed?
+        (index-header ht ls)
+        (literal-header ht ls))))
 
   (define (update-header-table-size ht ls)
     (receive (n ls)
@@ -339,13 +579,14 @@
   (define (header-list headers ht ls)
     (if (null? ls)
       (values headers ht ls)
-      (if (and (< (car ls) 64) (>= (car ls) 32))
-        (receive (ht ls) ; update header table size
-          (update-header-table-size ht ls)
-          (header-list headers ht ls))
-        (receive (h ht ls) ; get a header
-          (header ht ls)
-          (header-list (cons h headers) ht ls)))))
+      (let ((update? (and (< (car ls) 64) (>= (car ls) 32))))
+        (if update?
+          (receive (ht ls) ; update header table size
+            (update-header-table-size ht ls)
+            (header-list headers ht ls))
+          (receive (h ht ls) ; get a header
+            (header ht ls)
+            (header-list (cons h headers) ht ls))))))
 
   (define (make-hpack-decoder)
     (let ((header-table (make-header-table)))
@@ -355,7 +596,7 @@
           (set! header-table ht)
           (reverse headers)))))
 
-  ; Encoder
+;; Encoder
 
   (define (rest-of-integer->code n)
     (if (< n 128)
@@ -394,12 +635,56 @@
       (let* ((h (car headers))
              (index (header-table-find header-table h))
              (name-index (header-table-find-name header-table h))
-             (code (header->code h index name-index)))
-        (cons code (hpack-encode (cdr headers) header-table index-header?))))) ; for now, no incremental indexing
+             (code (header->code h index name-index))
+             (header-table (if (index-header?)
+                             (header-table-insert h header-table)
+                             header-table)))
+        (cons code (hpack-encode (cdr headers) header-table index-header?)))))
 
   (define (make-hpack-encoder)
     (let ((header-table (make-header-table)))
       (lambda (headers #!optional (index-header? #t))
         (apply append (hpack-encode headers header-table index-header?))))))
 
+(use srfi-13)
+
+(use json)
+(import hpack)
+
+(define decode (make-hpack-decoder))
+
+(define (get-wire seq)
+  (cdr (vector-ref seq 1)))
+
+(define (get-header-list seq)
+  (map
+    (lambda (x)
+      (cons (string->symbol (car x)) (cdr x)))
+    (map (compose car vector->list) (cdr (vector-ref seq 2)))))
+
+(define (hex-string->bytes s)
+  (if (string-null? s)
+    '()
+    (cons (string->number (string-take s 2) 16) (hex-string->bytes (string-drop s 2)))))
+
+(define (header-eq? a b)
+  (and (eq? (car a) (car b))
+       (string=? (cdr a) (cdr b))))
+
+(define (header-list-eq? hl-a hl-b)
+  (and (eq? (length hl-a) (length hl-b))
+       (every header-eq? hl-a hl-b)))
+
+(define (main args)
+  (for-each 
+    (lambda (n)
+      (display (conc "test " n ": "))
+      (let* ((file-name (conc "tests/hpack-test-case/nghttp2/story_"
+                              (string-pad (number->string n) 2 #\0)
+                              ".json"))
+             (struct (with-input-from-file file-name json-read))
+             (wires (map get-wire (cdr (vector-ref struct 0))))
+             (header-lists (map get-header-list (cdr (vector-ref struct 0)))))
+        (print (every identity (map header-list-eq?  header-lists (map (compose decode hex-string->bytes) wires))))))
+    (iota 30)))
 
