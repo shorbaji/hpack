@@ -1,11 +1,7 @@
-(
-(license "BSD")
-
-(category web)
-
-(needs defstruct)
-
-(test-depends test json)
-
-(author "Omar Shorbaji")
-(synopsis "A HTTP/2 header compression library for Chicken"))
+((files "hpack.setup" "hpack.release-info" "hpack.meta" "hpack.scm" "tests/run.scm")
+ (license "BSD")
+ (category web)
+ (needs defstruct)
+ (test-depends test json)
+ (author "Omar Shorbaji")
+ (synopsis "A HTTP/2 header compression library for Chicken"))
