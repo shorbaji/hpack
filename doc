@@ -1,28 +1,34 @@
-hpack
+[[tags: egg]]
 
-Description
+== hpack
+
+[[toc:]]
+
+=== Description
 A HTTP/2 header compression library for Chicken
 
-Authors
+=== Author
 Omar Shorbaji
 
-Requirements
-defstruct
+=== Requirements
 
-API
+Requires the defstruct
 
-(make-hpack-decoder)
+=== API
+
+<procedure> (make-hpack-decoder) </procedure>
 
 returns a function that accepts a string and returns a list of headers decoded.
 
-(make-hpack-encoder)
+<procedure>(make-hpack-encoder)</procedure>
 
 returns a function that accepts a list of headers and returns an HPACK string.
 The function takes an optional argument telling it whether to index headers when possible or not.
 Note that a header is a pair of a symbol and a string
 
-Examples
+=== Examples
 
+<enscript highlight="scheme">
 (define encode (make-hpack-encoder))
 
 (define headers 
@@ -34,23 +40,24 @@ Examples
 
 
 (encode headers)
-=> "A�\b�\\\v�p����@���\x03bar" 
+;=> "A�\b�\\\v�p����@���\x03bar" 
 
 (encode headers index: #f)
-=> "\x11�\b�\\\v�p����\x10���\x03bar"
-
+;.=> "\x11�\b�\\\v�p����\x10���\x03bar"
 
 (define (decode (make-hpack-decoder)))
 
 (decode (encode headers))
 
-=> ((:authority . "127.0.0.1")
-   (:method . "GET")
-   (:scheme . "http")
-   (:path . "/")
-   (foo . "bar"))
+;=> ((:authority . "127.0.0.1")
+;   (:method . "GET")
+;   (:scheme . "http")
+;   (:path . "/")
+;   (foo . "bar"))
+</enscript>
 
-License
+=== License
+
 ;; Copyright (c) 2014, Omar Shorbaji
 ;; All rights reserved.
 ;;
@@ -82,6 +89,6 @@ License
 ;; draft-ietf-httpbis-header-compression-09
 ;; reference: http://tools.ietf.org/html/draft-ietf-httpbis-header-compression-09 
 
-Version History
+=== Version History
 
 0.1  alpha release
