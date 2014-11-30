@@ -516,7 +516,7 @@
                  (+ in-static? 1))
             (let ((in-header-table?  (list-index pred hdrs)))
               (and in-header-table?
-                   (+ in-header-table? 1)))))))
+                   (+ in-header-table? 1 static-table-length)))))))
 
   (define header-table-find (header-table-finder header-eq?))
   (define header-table-find-name (header-table-finder name-eq?))
@@ -559,7 +559,8 @@
   (define (string-literal ls)
     (or (and (null? ls)
              make-error)
-        (let* ((o (car ls))
+        (let* ((tmp ls)
+               (o (car ls))
                (huff (>= o 128)))
           (receive (n ls) (integer 128 ls)
             (receive (s ls) (string-value n ls)
@@ -640,18 +641,19 @@
 
   (define (make-hpack-decoder)
     (let ((header-table (make-header-table)))
-      (lambda (block)
-        (receive (headers ht ls)
-          (header-list '() header-table block)
-          (set! header-table ht)
-          (reverse headers)))))
+      (lambda (code)
+        (let ((block (map char->integer (string->list code))))
+          (receive (headers ht ls)
+            (header-list '() header-table block)
+            (set! header-table ht)
+            (reverse headers))))))
 
   ;; Encoder
 
   (define (rest-of-integer->code n)
     (if (< n 128)
       (list n)
-      (cons (modulo n 128) (rest-of-integer->code (quotient n 128)))))
+      (cons (+ 128 (modulo n 128)) (rest-of-integer->code (quotient n 128)))))
 
   (define (integer->code base mask n)
     (if (> n mask)
@@ -670,13 +672,16 @@
         (integer->code m 127 len)
         to-send)))
 
-  (define (header->code h index name-index)
+  (define (header->code h index name-index index-header?)
     (if index
       (integer->code 128 127 index)
       (if name-index
-        (append (integer->code 0 15 name-index)
+        (append (if index-header?
+                  (integer->code 64 63 name-index)
+                  (integer->code 16 15 name-index))
                 (string->code (cdr h)))
-        (append (string->code (car h))
+        (append (list (if index-header? 64 16))
+                (string->code (symbol->string (car h)))
                 (string->code (cdr h))))))
 
   (define (hpack-encode headers header-table index-header?)
@@ -685,13 +690,19 @@
       (let* ((h (car headers))
              (index (header-table-find header-table h))
              (name-index (header-table-find-name header-table h))
-             (code (header->code h index name-index))
-             (header-table (if (index-header?)
-                             (header-table-insert h header-table)
+             (code (header->code h index name-index index-header?))
+             (header-table (if (and index-header? (not index))
+                             (header-table-insert header-table h)
                              header-table)))
         (cons code (hpack-encode (cdr headers) header-table index-header?)))))
 
   (define (make-hpack-encoder)
     (let ((header-table (make-header-table)))
       (lambda (headers #!optional (index-header? #t))
-        (apply append (hpack-encode headers header-table index-header?))))))
+        (list->string
+          (map integer->char
+               (apply append
+                      (hpack-encode headers
+                                    header-table
+                                    index-header?))))))))
+
