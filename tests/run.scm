@@ -35,7 +35,7 @@
 
 (for-each 
     (lambda (n)
-      (let* ((file-name (conc "./story_"
+      (let* ((file-name (conc "./tests/story_"
                               (string-pad (number->string n) 2 #\0)
                               ".json"))
              (struct (with-input-from-file file-name json-read))

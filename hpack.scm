@@ -41,8 +41,6 @@
   (import chicken scheme)
   (use srfi-1 defstruct)
 
-  (define make-error '())
-
   (define SETTINGS-HEADER-TABLE-SIZE (* 256 256 256)) ; arbitrary - should make a parameter
 
   ;; The Huffman code - copied directly from Appendix C and used to encode 
@@ -459,7 +457,7 @@
   (define (index-table-lookup index ht)
     (let ((headers (header-table-headers ht)))
       (if (> index (+ static-table-length (length headers)))
-        (make-error)
+        (signal 'hpack-error)
         (if (<= index static-table-length)
           (list-ref static-table (- index 1))
           (list-ref headers (- index static-table-length 1))))))
@@ -533,7 +531,7 @@
 
   (define (rest-of-integer r m ls)
     (or (and (null? ls)
-             make-error)
+             (signal 'hpack-error))
         (let ((o (car ls)))
           (if (< o 128)
             (values (+ r (* m o)) (cdr ls))
@@ -543,7 +541,7 @@
 
   (define (integer mask ls)
     (or (and (null? ls)
-             make-error)
+             (signal 'hpack-error))
         (let ((n (modulo (car ls) mask)))
           (if (eq? (+ n 1) mask)
             (rest-of-integer n 1 (cdr ls))
@@ -553,12 +551,12 @@
 
   (define (string-value n ls)
     (or (and (< (length ls) n)
-             make-error)
+             (signal 'hpack-error))
         (values (take ls n) (drop ls n))))
 
   (define (string-literal ls)
     (or (and (null? ls)
-             make-error)
+             (signal 'hpack-error))
         (let* ((tmp ls)
                (o (car ls))
                (huff (>= o 128)))
