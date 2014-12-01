@@ -1,5 +1,5 @@
 
  (repo git "https://github.com/shorbaji/hpack.git")
 
- (uri targz "https://github.com/shorbaji/{egg-name}/tar.gz/{egg-release}")
+ (uri targz "https://github.com/shorbaji/{egg-name}/tarball/{egg-release}")
  (release "0.1")
