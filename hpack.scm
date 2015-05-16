@@ -36,7 +36,7 @@
 ;; 2. error & exception handling
 
 (module hpack
-    (make-header-table set-header-table! update-header-table hpack-encode hpack-decode)
+    (make-hpack-encoder make-hpack-decoder make-header-table set-header-table! update-header-table hpack-encode hpack-decode)
   (import chicken scheme)
   (use srfi-1 defstruct data-structures)
 
@@ -703,5 +703,9 @@
 				   size: (header-table-size ht)
 				   usage: (header-table-usage ht))))
 	  (conc (list->string (map integer->char code))
-		(hpack-encode header-table (cdr headers) index-header?))))))
+		(hpack-encode header-table (cdr headers) index-header?)))))
+
+  (define make-hpack-encoder make-header-table)
+  (define make-hpack-decoder make-header-table))
+
 
