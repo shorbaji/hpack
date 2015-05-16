@@ -52,6 +52,8 @@
                         (begin
                           (test-assert (conc "decode seq " seq) (header-list-eq? (car d)
                                                                                  (car hls)))
+			  (print (car d))
+			  (print (car hls))
                           (let ((bool (header-list-eq? (hpack-decode de-encoder
 								     (hpack-encode encoder
 										   (car hls)))

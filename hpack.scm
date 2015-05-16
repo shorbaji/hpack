@@ -350,12 +350,15 @@
     (define (byte->bits b #!optional (n 8))
       (let lp ((i n) (x b) (r '()))
 	(if (zero? i)
-	    r
+	    (reverse r)
 	    (lp (sub1 i)
 		(quotient x 2)
 		(cons (modulo x 2)
 		      r)))))
-    (reverse (append-map byte->bits (reverse ls))))
+    (let* ((x (reverse (append-map byte->bits (reverse ls)))))
+      (print x)
+      x))
+  
 
   (define (huffman-decode bytes)
     (huffman-find huffman-tree
