@@ -29,9 +29,9 @@
   (and (eq? (length hl-a) (length hl-b))
        (every header-eq? hl-a hl-b)))
 
-(define decode (make-hpack-decoder))
-(define encode (make-hpack-encoder))
-(define de-encode (make-hpack-decoder))
+(define decoder (make-hpack-decoder))
+(define encoder (make-hpack-encoder))
+(define de-encoder (make-hpack-decoder))
 
 (for-each 
     (lambda (n)
@@ -42,15 +42,23 @@
              (strings (map get-string (cdr (vector-ref struct 0))))
              (header-lists (map get-header-list (cdr (vector-ref struct 0)))))
         (test-group (conc "story " n)
-                    (let lp ((seq 0) (d (map decode strings)) (hls header-lists))
+                    (let lp ((seq 0)
+			     (d (map (lambda (s)
+				       (hpack-decode decoder s))
+				     strings))
+			     (hls header-lists))
                       (if (null? d)
                         '()
                         (begin
                           (test-assert (conc "decode seq " seq) (header-list-eq? (car d)
                                                                                  (car hls)))
-                          (let ((bool (header-list-eq? (de-encode (encode (car hls)))
+                          (let ((bool (header-list-eq? (hpack-decode de-encoder
+								     (hpack-encode encoder
+										   (car hls)))
                                                        (car hls))))
-                            (test-assert (conc "encode seq " seq) (header-list-eq? (de-encode (encode (car hls)))
+                            (test-assert (conc "encode seq " seq) (header-list-eq? (hpack-decode de-encoder
+												 (hpack-encode encoder
+													       (car hls)))
                                                                                    (car hls))))
                           (lp (+ seq 1) (cdr d) (cdr hls))))))))
   (iota 32))
