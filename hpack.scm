@@ -36,7 +36,7 @@
 ;; 2. error & exception handling
 
 (module hpack
-  (make-hpack-encoder make-hpack-decoder)
+  (make-hpack-encoder make-hpack-decoder hpack-encode hpack-decode make-header-table)
 
   (import chicken scheme)
   (use srfi-1 defstruct)
@@ -352,7 +352,7 @@
       (if (eq? n 0)
         '()
         (cons (modulo b 2) (byte->bits (quotient b 2) (sub1 n)))))
-    (reverse (apply append (map byte->bits (reverse ls)))))
+    (reverse (append-map byte->bits (reverse ls))))
 
   (define (huffman-decode bytes)
     (huffman-find huffman-tree
@@ -648,6 +648,16 @@
             (set! header-table ht)
             (reverse headers))))))
 
+  (define (hpack-decode header-table code)
+        (let ((block (map char->integer (string->list code))))
+          (receive (headers ht ls)
+            (header-list '() header-table block)
+            (set-header-table! header-table
+			       size: (header-table-size ht)
+			       usage: (header-table-usage ht)
+			       headers: (header-table-headers ht))
+            (reverse headers))))
+  
   ;; Encoder
 
   (define (rest-of-integer->code n)
@@ -684,7 +694,7 @@
                 (string->code (symbol->string (car h)))
                 (string->code (cdr h))))))
 
-  (define (hpack-encode headers header-table index-header?)
+  (define (hpack-encode-headers headers header-table index-header?)
     (if (null? headers)
       '()
       (let* ((h (car headers))
@@ -694,7 +704,7 @@
              (header-table (if (and index-header? (not index))
                              (header-table-insert header-table h)
                              header-table)))
-        (cons code (hpack-encode (cdr headers) header-table index-header?)))))
+        (cons code (hpack-encode-headers (cdr headers) header-table index-header?)))))
 
   (define (make-hpack-encoder)
     (let ((header-table (make-header-table)))
@@ -702,8 +712,17 @@
         (list->string
           (map integer->char
                (apply append
-                      (hpack-encode headers
-                                    header-table
-                                    index-header?))))))))
+                      (hpack-encode-headers headers
+					    header-table
+					    index-header?)))))))
+  
+  (define (hpack-encode header-table headers #!optional (index-header? #t))
+    (list->string
+     (map integer->char
+	  (apply append
+		 (hpack-encode-headers headers
+				       header-table
+				       index-header?))))))
+
 
 
