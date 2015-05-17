@@ -2,4 +2,4 @@
  (repo git "https://github.com/shorbaji/hpack.git")
 
  (uri targz "https://github.com/shorbaji/{egg-name}/tarball/{egg-release}")
- (release "0.1")
+ (release "0.2")
