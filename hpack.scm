@@ -1,6 +1,6 @@
 ;;
 ;; hpack is a HTTP/2 header compression library for Chicken
-;; Copyright (c) 2014, Omar Shorbaji
+;; Copyright (c) 2014-2015, Omar Shorbaji
 ;; All rights reserved.
 ;;
 ;; Redistribution and use in source and binary forms, with or without
@@ -36,7 +36,7 @@
 ;; 2. error & exception handling
 
 (module hpack
-  (make-hpack-encoder make-hpack-decoder hpack-encode hpack-decode make-header-table)
+  (make-hpack-encoder make-hpack-decoder hpack-encode hpack-decode make-header-table set-header-table! update-header-table)
 
   (import chicken scheme)
   (use srfi-1 defstruct)
