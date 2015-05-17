@@ -41,8 +41,6 @@
   (import chicken scheme)
   (use srfi-1 defstruct)
 
-  (define SETTINGS-HEADER-TABLE-SIZE (* 256 256 256)) ; arbitrary - should make a parameter
-
   ;; The Huffman code - copied directly from Appendix C and used to encode 
 
   (define huffman-code
@@ -446,10 +444,12 @@
 
   ;; Section 3.3.2 Header Table
 
+  (define DEFAULT-HEADER-TABLE-SIZE 4096)
+  
   (defstruct header-table
     (headers '())
     (usage 0)
-    (size SETTINGS-HEADER-TABLE-SIZE))
+    (size DEFAULT-HEADER-TABLE-SIZE))  
 
   ;; Section 3.3.3 Index Address Space
   ;; Note: static-table and header-table indexes start at 1
@@ -550,9 +550,11 @@
   ; Section 6.2 String Representation
 
   (define (string-value n ls)
-    (or (and (< (length ls) n)
-             (signal 'hpack-error))
+    (if (< (length ls)
+	   n)
+	(signal 'hpack-error)
         (values (take ls n) (drop ls n))))
+  
 
   (define (string-literal ls)
     (or (and (null? ls)
@@ -703,4 +705,5 @@
                       (hpack-encode headers
                                     header-table
                                     index-header?))))))))
+
 
